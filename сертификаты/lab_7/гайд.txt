@@ -1,0 +1,91 @@
+ооооооооооооооооооох, пойдёт сща гайд
+так
+установка opensll
+там добавите в system path, чтобы из консоли была доступна тула
+разберётесь
+
+дальше
+1) генерим ключ сертификата и шифруем его -- openssl genrsa -out CA.key 2048
+2) подписываем сертификат openssl req -x509 -new -key CA.key -days 700 -sha256 -out CA.crt
+кому очень интересно в чат ктините и посмотрите что значат каждый параметр
+а так, в двух словах, мы только что сгенерировали корневой сертификат, с помощью него можно проверять
+ все подписанные им доменные сертификаты
+3) win+r certmgr.msс --> вторая папка 'Доверенные корневые центры сертификации', переходим туда, там папка 'сертификаты', по этой папке click пкм и выбираем 'все задачи' --> 'импорт ...' 
+добавляем только что сгенерированный сертификат CA.crt туда, куда нам предлагает мастер установки
+перезагружаться не надо
+4) дааааааааааааааальше, openssl genrsa -out LAB.KEY 2048 -- генерация приватного ключа для ресурса
+потом нужно создать в той же директории файлик LAB.cfg:
+
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C = BY
+ST = Minsk
+L = Minsk
+O = your_FIO
+OU = your_FIO
+CN  = your_FIO
+
+[v3_req]
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = your_FIO
+DNS.2 = your_FIO.LAB
+поменяли, сохранили
+5) openssl req -new -key LAB.key -out LAB.csr -sha256 -config LAB.cfg -- генерация запроса на сертификат
+ домена 
+6) openssl x509 -req -in LAB.csr -CA CA1.crt -CAkey CA1.key
+ -CAcreateserial -out LAB.crt -days 365 -sha256 -extensions v3_req -extfile LAB.cfg
+  -- генерация сертификата для ресурса
+
+теперь сервер
+самый прсотой:
+
+import https from 'https';
+import fs from 'fs';
+
+const options = {
+  key: fs.readFileSync('./LAB.key'), //доменный ключ
+  cert: fs.readFileSync('./LAB.crt') // доменный сертификат
+};
+
+const server = https.createServer(options, (req, res) => {
+  res.writeHead(200);
+  res.end('Hello HTTPS World!');
+});
+
+server.listen(3443, () => {
+  console.log('Server running on https://localhost:3443/');
+});
+
+там где комменты, важно не перепутать с корневым CA.crt!
+
+теперь помним, что генерировали на сертификат на домен
+так вот, чтобы не поднимать отдельно домен для теста, идём на диск C --> Windows --> System32 --> drivers --> etc --> hosts
+выдайте себе права на изменение файлов в цэй папке, или просто зайдите под админкой сразу же
+у каждого он может выглядеть по разному, но суть такая, что нужно добавить соответствие IP localhost вашему домену, который указали в файле конфига
+
+[alt_names]
+DNS.1 = your_FIO
+
+например это
+и так, добавляем строку в конце файла:
+127.0.0.1 your_FIO
+!возможно нужно это будет добавить перед строкой:
+# End of section
+это если система уже добавляла такие соответствия
+
+ну вроде всё
+теперь запускаем сервер
+
+переходим в браузере https://your_FIO:3443
+порт можно менять, не принципиально 
+
+
+
